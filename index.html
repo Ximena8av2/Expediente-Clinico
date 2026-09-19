@@ -212,16 +212,31 @@ function gcalEnsureTokenClient(){
   }
   return gcal.tokenClient;
 }
+async function gcalListaCalendarios(){
+  const url='https://www.googleapis.com/calendar/v3/users/me/calendarList?'+new URLSearchParams({minAccessRole:'reader',maxResults:'250'});
+  const res=await fetch(url,{headers:{Authorization:'Bearer '+gcal.token}});
+  if(!res.ok)return['primary'];
+  const data=await res.json();
+  const ids=(data.items||[]).filter(c=>c.selected!==false).map(c=>c.id);
+  return ids.length?ids:['primary'];
+}
 async function gcalFetchEventos(){
   if(!gcal.token)return;
   try{
     const timeMin=new Date().toISOString();
     const timeMax=new Date(Date.now()+45*DAY).toISOString();
-    const url='https://www.googleapis.com/calendar/v3/calendars/primary/events?'+new URLSearchParams({timeMin,timeMax,singleEvents:'true',orderBy:'startTime',maxResults:'250'});
-    const res=await fetch(url,{headers:{Authorization:'Bearer '+gcal.token}});
-    if(!res.ok){toast('No pude leer tu Google Calendar (código '+res.status+').');return;}
-    const data=await res.json();
-    gcal.events=(data.items||[]).map(ev=>({summary:ev.summary||'',start:(ev.start&&(ev.start.dateTime||ev.start.date))||null})).filter(e=>e.start);
+    const calIds=await gcalListaCalendarios();
+    const todos=[];
+    for(const calId of calIds){
+      try{
+        const url='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calId)+'/events?'+new URLSearchParams({timeMin,timeMax,singleEvents:'true',orderBy:'startTime',maxResults:'250'});
+        const res=await fetch(url,{headers:{Authorization:'Bearer '+gcal.token}});
+        if(!res.ok)continue;
+        const data=await res.json();
+        (data.items||[]).forEach(ev=>{const start=ev.start&&(ev.start.dateTime||ev.start.date);if(start)todos.push({summary:ev.summary||'',start});});
+      }catch(e){/* seguimos con los demás calendarios */}
+    }
+    gcal.events=todos;
     gcal.lastCheck=Date.now();
   }catch(e){toast('No pude conectar con Google Calendar ahora mismo.');}
   rerender();
@@ -333,7 +348,8 @@ function modalidadResumen(c){
   const etiqueta=m=>m==='online'?'En línea 💻':m==='presencial'?'Presencial 🏠':'sin especificar';
   const cont={online:0,presencial:0,sinespecificar:0};
   ss.forEach(s=>{cont[s.modalidad==='online'?'online':s.modalidad==='presencial'?'presencial':'sinespecificar']++;});
-  return{ultima:etiqueta(ss[ss.length-1].modalidad),total:ss.length,online:cont.online,presencial:cont.presencial,sinespecificar:cont.sinespecificar};
+  const ult=ss[ss.length-1];
+  return{ultima:etiqueta(ult.modalidad),ultimaFecha:ult.fecha,ultimaNum:ult.num,total:ss.length,online:cont.online,presencial:cont.presencial,sinespecificar:cont.sinespecificar};
 }
 
 /* ============ borrador local ============ */
@@ -516,7 +532,7 @@ function renderResumen(c){
   return (staleHip(c)?'<div class="banner" style="margin-top:10px">La hipótesis lleva 4 sesiones sin cambios. ¿Se sostiene o toca revisarla? <button class="link" data-a="fichatab" data-t="clinico">Abrir espacio clínico</button></div>':'')+
   '<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Temporalidad y modalidad</h3>'+
   '<div class="small">'+temporalidadTxt(c)+'</div>'+
-  (modRes?'<div class="small" style="margin-top:6px">Última sesión: <b>'+modRes.ultima+'</b> · De las últimas '+modRes.total+': '+modRes.online+' en línea, '+modRes.presencial+' presencial'+(modRes.sinespecificar?', '+modRes.sinespecificar+' sin especificar':'')+'</div>':'<div class="small empty" style="margin-top:6px">Aún no hay sesiones con modalidad registrada.</div>')+
+  (modRes?'<div class="small" style="margin-top:6px">Última sesión: <b>'+fd(modRes.ultimaFecha)+'</b> (#'+modRes.ultimaNum+') · Modalidad: '+modRes.ultima+' · De las últimas '+modRes.total+': '+modRes.online+' en línea, '+modRes.presencial+' presencial'+(modRes.sinespecificar?', '+modRes.sinespecificar+' sin especificar':'')+'</div>':'<div class="small empty" style="margin-top:6px">Aún no hay sesiones con modalidad registrada.</div>')+
   '</div>'+
   '<h3 style="margin-top:14px">Antes de entrar a sesión</h3><div class="grid2">'+
   M('Hipótesis activa',{v:c.hipActiva})+M('Último insight',uf('insight'))+M('Próximo paso',uf('proximo'))+M('Tarea del consultante',uf('tarea'))+M('Cómo cerramos',uf('cierre'))+M('Cómo me sentí yo',uf('yo'))+M('Cómo lo/la sentí',uf('consultante'))+
