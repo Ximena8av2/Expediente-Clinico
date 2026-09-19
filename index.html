@@ -523,6 +523,7 @@ function renderResumen(c){
   M('Preparé para la próxima',c.paraProxima?{v:(c.paraProxima.foco||'')+(c.paraProxima.intervencion?'\nIntervención: '+c.paraProxima.intervencion:'')}:null)+'</div>'+
   '<h3 style="margin-top:18px">Línea de proceso</h3><div class="card">'+(ss.length?ss.map(s=>'<div class="tl" data-a="open-s" data-id="'+s.id+'"><b style="min-width:34px">#'+s.num+'</b><span class="small" style="min-width:56px">'+fd(s.fecha)+'</span><span class="chip '+(s.estado==='validada'?'g':'')+'">'+s.estado+'</span><span class="small" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.foco||'')+'</span></div>').join(''):'<span class="empty">Sin sesiones.</span>')+'</div>'+
   '<details class="card"><summary>Datos del consultante</summary>'+
+  '<label class="f"><span>Iniciales</span><em class="hint">Recuerda usar solo iniciales, nunca el nombre completo.</em><input data-cf="ini" value="'+esc(c.ini)+'"></label>'+
   '<label class="f"><span>Motivo de consulta</span><textarea data-cf="motivo" rows="2">'+esc(c.motivo)+'</textarea></label>'+
   '<label class="f"><span>Hipótesis inicial</span><textarea data-cf="hipInicial" rows="2">'+esc(c.hipInicial)+'</textarea></label>'+
   '<label class="f"><span>Horario habitual</span><input data-cf="horario" value="'+esc(c.horario)+'"></label>'+
