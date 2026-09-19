@@ -215,28 +215,32 @@ function gcalEnsureTokenClient(){
 async function gcalListaCalendarios(){
   const url='https://www.googleapis.com/calendar/v3/users/me/calendarList?'+new URLSearchParams({minAccessRole:'reader',maxResults:'250'});
   const res=await fetch(url,{headers:{Authorization:'Bearer '+gcal.token}});
-  if(!res.ok)return['primary'];
+  if(!res.ok)return[{id:'primary',summary:'Principal'}];
   const data=await res.json();
-  const ids=(data.items||[]).filter(c=>c.selected!==false).map(c=>c.id);
-  return ids.length?ids:['primary'];
+  const cals=(data.items||[]).map(c=>({id:c.id,summary:c.summary||c.id}));
+  return cals.length?cals:[{id:'primary',summary:'Principal'}];
 }
 async function gcalFetchEventos(){
   if(!gcal.token)return;
   try{
     const timeMin=new Date().toISOString();
     const timeMax=new Date(Date.now()+45*DAY).toISOString();
-    const calIds=await gcalListaCalendarios();
+    const cals=await gcalListaCalendarios();
     const todos=[];
-    for(const calId of calIds){
+    const porCalendario=[];
+    for(const cal of cals){
       try{
-        const url='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calId)+'/events?'+new URLSearchParams({timeMin,timeMax,singleEvents:'true',orderBy:'startTime',maxResults:'250'});
+        const url='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cal.id)+'/events?'+new URLSearchParams({timeMin,timeMax,singleEvents:'true',orderBy:'startTime',maxResults:'250'});
         const res=await fetch(url,{headers:{Authorization:'Bearer '+gcal.token}});
-        if(!res.ok)continue;
+        if(!res.ok){porCalendario.push({summary:cal.summary,count:null,error:res.status});continue;}
         const data=await res.json();
-        (data.items||[]).forEach(ev=>{const start=ev.start&&(ev.start.dateTime||ev.start.date);if(start)todos.push({summary:ev.summary||'',start});});
-      }catch(e){/* seguimos con los demás calendarios */}
+        let n=0;
+        (data.items||[]).forEach(ev=>{const start=ev.start&&(ev.start.dateTime||ev.start.date);if(start){todos.push({summary:ev.summary||'',start});n++;}});
+        porCalendario.push({summary:cal.summary,count:n});
+      }catch(e){porCalendario.push({summary:cal.summary,count:null,error:'red'});}
     }
     gcal.events=todos;
+    gcal.porCalendario=porCalendario;
     gcal.lastCheck=Date.now();
   }catch(e){toast('No pude conectar con Google Calendar ahora mismo.');}
   rerender();
@@ -532,7 +536,7 @@ function renderResumen(c){
   return (staleHip(c)?'<div class="banner" style="margin-top:10px">La hipótesis lleva 4 sesiones sin cambios. ¿Se sostiene o toca revisarla? <button class="link" data-a="fichatab" data-t="clinico">Abrir espacio clínico</button></div>':'')+
   '<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Temporalidad y modalidad</h3>'+
   '<div class="small">'+temporalidadTxt(c)+'</div>'+
-  (modRes?'<div class="small" style="margin-top:6px">Última sesión: <b>'+fd(modRes.ultimaFecha)+'</b> (#'+modRes.ultimaNum+') · Modalidad: '+modRes.ultima+' · De las últimas '+modRes.total+': '+modRes.online+' en línea, '+modRes.presencial+' presencial'+(modRes.sinespecificar?', '+modRes.sinespecificar+' sin especificar':'')+'</div>':'<div class="small empty" style="margin-top:6px">Aún no hay sesiones con modalidad registrada.</div>')+
+  (modRes?'<div class="small" style="margin-top:6px">Última sesión: <b>'+fd(modRes.ultimaFecha)+'</b> (#'+modRes.ultimaNum+')</div><div class="small">Modalidad más reciente: '+modRes.ultima+' · De las últimas '+modRes.total+': '+modRes.online+' en línea, '+modRes.presencial+' presencial'+(modRes.sinespecificar?', '+modRes.sinespecificar+' sin especificar':'')+'</div>':'<div class="small empty" style="margin-top:6px">Aún no hay sesiones con modalidad registrada.</div>')+
   '</div>'+
   '<h3 style="margin-top:14px">Antes de entrar a sesión</h3><div class="grid2">'+
   M('Hipótesis activa',{v:c.hipActiva})+M('Último insight',uf('insight'))+M('Próximo paso',uf('proximo'))+M('Tarea del consultante',uf('tarea'))+M('Cómo cerramos',uf('cierre'))+M('Cómo me sentí yo',uf('yo'))+M('Cómo lo/la sentí',uf('consultante'))+
@@ -627,6 +631,7 @@ function vAjustes(){
   '<label class="f"><span>Client ID de Google</span><em class="hint">Lo obtienes en Google Cloud Console → Credentials. No es secreto, se puede guardar tal cual.</em><input data-cfg="gcalClientId" value="'+esc(S.cfg.gcalClientId||'')+'" placeholder="xxxxxxxx.apps.googleusercontent.com"></label>'+
   '<div class="row"><button class="btn" data-a="gcal-conectar">'+(gcal.token?'Reconectar Google Calendar':'Conectar con Google Calendar')+'</button>'+(gcal.token?'<button class="btn ghost" data-a="gcal-verificar">Verificar ahora</button>':'')+'</div>'+
   '<div class="small" style="margin-top:6px">'+(gcal.connecting?'Conectando…':gcal.lastCheck?'Última verificación: '+new Date(gcal.lastCheck).toLocaleString('es-MX')+' · '+(gcal.events?gcal.events.length:0)+' eventos próximos revisados.':'Aún no conectado en este dispositivo.')+'</div>'+
+  (gcal.porCalendario?'<details style="margin-top:6px"><summary class="small">Ver calendarios revisados ('+gcal.porCalendario.length+')</summary>'+gcal.porCalendario.map(p=>'<div class="small">· '+esc(p.summary)+': '+(p.error?'error '+p.error:p.count+' eventos')+'</div>').join('')+'</details>':'')+
   '<p class="small" style="margin-top:8px">Para que funcione el aviso, agrega en cada consultante su "Nombre tal como aparece en tu Google Calendar" (en Datos del consultante, dentro de su ficha).</p></div>'+
   '<div class="card"><h3>Respaldo y sincronización</h3><p class="small">Un respaldo es un archivo con todos tus datos, para no perderlos y para pasarlos a tu iPad o iPhone.</p>'+
   '<ol style="margin:6px 0 12px;padding-left:1.2em;font-size:.9rem"><li>Toca <b>“Exportar cifrado”</b> abajo (recomendado: pide una contraseña, tus notas viajan protegidas).</li><li>El navegador descarga un archivo <code>.cifrado.json</code>. Guárdalo en tu nube personal (Drive, iCloud) — no en este dispositivo solamente.</li><li>En el otro dispositivo, abre esta misma página y usa <b>“Importar archivo”</b> con ese archivo y esa contraseña.</li></ol>'+
