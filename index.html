@@ -53,9 +53,19 @@ input,textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--
 textarea{resize:vertical;min-height:70px}
 input:focus,textarea:focus,select:focus{outline:2px solid var(--tan);border-color:var(--tan)}
 textarea:disabled,input:disabled{opacity:.75}
+.rtbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+.rt-btn{min-height:38px;padding:6px 13px;font-size:.9rem;line-height:1}
+.rt-btn.on{background:var(--tan-d)}
+.rt-color{width:40px;height:38px;padding:3px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--bg)}
+.rtbox{width:100%;min-height:260px;max-height:600px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);color:var(--ink);margin-bottom:10px;font:inherit}
+.rtbox:focus{outline:2px solid var(--tan);border-color:var(--tan)}
+.rtbox ul{margin:6px 0 6px 22px}
+.rtbox:empty:before{content:attr(data-ph);color:var(--muted)}
 .mini{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .mini b{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--tan-d);margin-bottom:2px}
 .mini p{margin:0;white-space:pre-wrap}
+.mini .rich{margin:0}
+.mini .rich ul{margin:4px 0 4px 20px}
 .empty{color:var(--muted)}
 .mk{display:flex;gap:8px;flex-wrap:wrap}
 .mk .btn{flex:1 1 150px}
@@ -115,6 +125,8 @@ const daysAgo=s=>Math.round((today()-parse(s))/DAY);
 const fd=s=>s?parse(s).toLocaleDateString('es-MX',{day:'numeric',month:'short'}):'—';
 const hm=t=>new Date(t).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
 const nl=s=>esc(s).replace(/\n/g,'<br>');
+const esHtmlEnriquecido=s=>/<[a-z][\s\S]*>/i.test(s||'');
+const richView=s=>esHtmlEnriquecido(s)?(s||''):nl(s);
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),3800);}
 function compressImage(file,maxW,quality){
   return new Promise((resolve,reject)=>{
@@ -314,8 +326,6 @@ const SYS_BORRADOR=(f)=>'Eres un asistente de redacción para una psicóloga cl�
 'REGLA CENTRAL: solo reorganizas y redactas con el contenido y las palabras de SUS notas. No agregues hipótesis, interpretaciones, diagnósticos, intervenciones ni conclusiones que ella no escribió. No suavices lo que ella dejó escrito (por ejemplo, si nombra violencia, se queda nombrada). Si un campo está vacío escribe [pendiente]. Conserva su voz y usa primera persona cuando ella lo hace. '+
 (f==='soap'?'Formato SOAP: S (lo que refiere el consultante), O (observaciones), A (solo lo que ella escribió como insight/hipótesis), P (intervenciones, tarea, próximo paso). Añade al final "Autorreflexión de la terapeuta" con lo que ella anotó.':'Formato narrativo-sistémico con estas secciones: Foco e intención clínica · Movimientos clave · Intervenciones realizadas · Insight · Cómo cerramos · Autorreflexión de la terapeuta (cómo se sintió ella y cómo percibió al consultante) · Tarea y próximo paso.')+
 ' Devuelve solo la nota, sin comentarios tuyos.';
-const SYS_LECT='Eres un colega supervisor para una psicóloga clínica (psicología sistémica integrativa). Trabajas con iniciales. Reglas: (1) No des hipótesis cerradas ni diagnósticos: propón 2 o 3 líneas de lectura alternativas que se puedan comparar. (2) Máximo 1–2 conceptos teóricos por lectura y solo si aportan dirección clínica (sistémica: homeostasis, triangulación, lealtades invisibles, diferenciación; ciclo vital; trauma y apego; violencia; narrativa; sentido de coherencia). (3) Cada lectura lleva: concepto breve, aplicación al caso basada SOLO en lo escrito, implicación clínica y una pregunta que obligue a la terapeuta a posicionarse. (4) Si aparece violencia, nómbrala sin suavizarla y diferencia comprender de justificar. (5) Incluye la dimensión corporal solo si hay datos. (6) Señala vacíos de información en vez de inventar. (7) No la tranquilices en automático; si notas evitación o sobre-exploración, dilo con respeto. Responde SOLO con JSON válido en español: {"lecturas":[{"marco":"","concepto":"","aplicacion":"","implicacion":"","pregunta":""}],"vacios":[""],"riesgos":[""]}';
-const SYS_INTER='Eres un colega supervisor para una psicóloga clínica (psicología sistémica integrativa). Ella ya tiene una hipótesis y ya propuso su propia intervención. No la reemplaces: compárala. Devuelve SOLO JSON válido en español: {"sobre_tu_propuesta":{"tipo":"explorar|confrontar|dirigir","lectura":"qué hace esa intervención y qué intención clínica parece tener"},"opciones":[{"tipo":"explorar|confrontar|dirigir","intervencion":"","intencion":"","ejemplo":"pregunta o frase concreta","riesgo":"qué observar después"}],"sostener":"si el consultante se cierra tras la intervención, cómo sostener el vínculo sin retirar lo dicho"}. Da 2 o 3 opciones distintas entre sí y coherentes con su hipótesis.';
 
 /* ============ semáforo ============ */
 function estadoC(c){
@@ -468,7 +478,7 @@ async function pedirDatosReales(){
 
 
 /* ============ estado de UI ============ */
-const ui={view:'inicio',cid:null,sid:null,filtro:'todos',fichaTab:'resumen',clin:{cid:null,mia:'',lect:null,elegida:null,mia2:'',inter:'',opc:null,foco:'',busy:''}};
+const ui={view:'inicio',cid:null,sid:null,filtro:'todos',fichaTab:'resumen'};
 
 /* ============ vistas ============ */
 function vInicio(){
@@ -481,7 +491,7 @@ function vInicio(){
   '<button class="hbox" data-a="nav" data-v="ajustes"><span class="hi">⚙️</span><h3>Ajustes y respaldo</h3><div class="small">Cómo usar la IA (sin costo o con tu API), exportar/importar tus datos</div></button>'+
   ['Pagos y ganancias','Agenda y confirmaciones','Recursos (Canva)'].map(x=>'<div class="hbox soon"><span class="hi">🗂️</span><h3>'+x+'</h3><div class="small">Próximamente</div></div>').join('')+
   '</div>'+
-  '<details class="card" style="margin-top:6px"><summary>¿Cómo empiezo?</summary><ol style="margin:8px 0 0;padding-left:1.2em"><li>Entra a <b>Mi expediente</b> y toca “+ Consultante”.</li><li>Abre su ficha: ahí viven su Historia clínica, su Formato secuencial y su Espacio clínico, en pestañas.</li><li>Crea una <b>Nueva sesión</b> y, durante ella, marca momentos con los botones ❓💬🔚 (o escribe después).</li><li>Al terminar, llena los campos de la sección “Después de la sesión”.</li><li>Arma el borrador (con tu Claude.ai o sin IA) y <b>valídalo</b> cuando lo revises.</li><li>De vez en cuando, ve a <b>Ajustes</b> y exporta un respaldo.</li></ol></details>';
+  '<details class="card" style="margin-top:6px"><summary>¿Cómo empiezo?</summary><ol style="margin:8px 0 0;padding-left:1.2em"><li>Entra a <b>Mi expediente</b> y toca “+ Consultante”.</li><li>Abre su ficha: ahí viven su Historia clínica y su Formato secuencial, en pestañas.</li><li>Crea una <b>Nueva sesión</b> y, durante ella, marca momentos con los botones ❓💬🔚 (o escribe después).</li><li>Al terminar, llena los campos de la sección “Después de la sesión”.</li><li>Arma el borrador (con tu Claude.ai o sin IA) y <b>valídalo</b> cuando lo revises.</li><li>De vez en cuando, ve a <b>Ajustes</b> y exporta un respaldo.</li></ol></details>';
 }
 function vTablero(){
   const items0=S.consultantes.map(c=>({c,e:estadoC(c)}));
@@ -517,14 +527,13 @@ function vFicha(){
   const c=cons(ui.cid);if(!c)return vTablero();
   const e=estadoC(c);
   const tab=ui.fichaTab||'resumen';
-  const tabs=[['resumen','Resumen'],['historia','Historia clínica'],['secuencial','Formato secuencial'],['clinico','Espacio clínico']];
+  const tabs=[['resumen','Resumen'],['historia','Historia clínica'],['secuencial','Formato secuencial']];
   let out='<button class="link" data-a="nav" data-v="tablero">← Tablero</button>'+
   '<div class="row" style="justify-content:space-between"><h2><span class="dot '+e.lvl+'" style="vertical-align:middle;margin-right:8px"></span>'+esc(c.ini)+'</h2><button class="btn" data-a="nueva-s">+ Nueva sesión</button></div>'+
   '<div class="small">'+esc(e.txt)+' · '+esc(c.horario||'')+' · Inicio '+fd(c.inicio)+'</div>'+
   '<div class="fbar" style="margin-top:12px">'+tabs.map(([k,l])=>'<button class="fchip '+(tab===k?'active':'')+'" data-a="fichatab" data-t="'+k+'">'+l+'</button>').join('')+'</div>';
   if(tab==='historia')out+=renderHistoria(c);
   else if(tab==='secuencial')out+=renderSecuencial(c);
-  else if(tab==='clinico')out+=renderClinico(c);
   else out+=renderResumen(c);
   return out;
 }
@@ -533,15 +542,21 @@ function renderResumen(c){
   const M=(t,v,extra)=>'<div class="mini"><b>'+t+'</b>'+(v&&v.v?'<p>'+nl(v.v)+'</p><span class="small">'+(v.n?'sesión '+v.n:'')+'</span>':'<p class="empty">—</p>')+(extra||'')+'</div>';
   const uf=k=>ultimoCampo(c,k);
   const modRes=modalidadResumen(c);
-  return (staleHip(c)?'<div class="banner" style="margin-top:10px">La hipótesis lleva 4 sesiones sin cambios. ¿Se sostiene o toca revisarla? <button class="link" data-a="fichatab" data-t="clinico">Abrir espacio clínico</button></div>':'')+
+  const pp=c.paraProxima||{foco:'',intervencion:'',fecha:''};
+  const hh=(c.hipHist||[]).slice().reverse();
+  return (staleHip(c)?'<div class="banner" style="margin-top:10px">La hipótesis lleva 4 sesiones sin cambios. ¿Se sostiene o toca revisarla? Actualízala en "Antes de la sesión" la próxima vez que abras una sesión con '+esc(c.ini)+'.</div>':'')+
   '<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Temporalidad y modalidad</h3>'+
   '<div class="small">'+temporalidadTxt(c)+'</div>'+
   (modRes?'<div class="small" style="margin-top:6px">Última sesión: <b>'+fd(modRes.ultimaFecha)+'</b> (#'+modRes.ultimaNum+')</div><div class="small">Modalidad más reciente: '+modRes.ultima+' · De las últimas '+modRes.total+': '+modRes.online+' en línea, '+modRes.presencial+' presencial'+(modRes.sinespecificar?', '+modRes.sinespecificar+' sin especificar':'')+'</div>':'<div class="small empty" style="margin-top:6px">Aún no hay sesiones con modalidad registrada.</div>')+
   '</div>'+
   '<h3 style="margin-top:14px">Antes de entrar a sesión</h3><div class="grid2">'+
-  M('Hipótesis activa',{v:c.hipActiva})+M('Último insight',uf('insight'))+M('Próximo paso',uf('proximo'))+M('Tarea del consultante',uf('tarea'))+M('Cómo cerramos',uf('cierre'))+M('Cómo me sentí yo',uf('yo'))+M('Cómo lo/la sentí',uf('consultante'))+
-  M('Preparé para la próxima',c.paraProxima?{v:(c.paraProxima.foco||'')+(c.paraProxima.intervencion?'\nIntervención: '+c.paraProxima.intervencion:'')}:null)+'</div>'+
+  M('Hipótesis activa',{v:c.hipActiva})+M('Último insight',uf('insight'))+M('Próximo paso',uf('proximo'))+M('Tarea del consultante',uf('tarea'))+M('Cómo cerramos',uf('cierre'))+M('Cómo me sentí yo',uf('yo'))+M('Cómo lo/la sentí',uf('consultante'))+'</div>'+
+  '<div class="card" style="margin-top:14px"><h3 style="margin-top:0">Preparar próxima sesión</h3><em class="hint">Lo que escribas aquí llena automáticamente el "Foco de la sesión" cuando crees la siguiente sesión de '+esc(c.ini)+'.</em>'+
+  '<label class="f"><span>Foco / qué quiero trabajar</span><textarea data-pp="foco" rows="2">'+esc(pp.foco)+'</textarea></label>'+
+  '<label class="f"><span>Intervención a probar (opcional)</span><textarea data-pp="intervencion" rows="2">'+esc(pp.intervencion)+'</textarea></label>'+
+  (pp.fecha?'<div class="small">Guardado el '+fd(pp.fecha)+'</div>':'')+'</div>'+
   '<h3 style="margin-top:18px">Línea de proceso</h3><div class="card">'+(ss.length?ss.map(s=>'<div class="tl" data-a="open-s" data-id="'+s.id+'"><b style="min-width:34px">#'+s.num+'</b><span class="small" style="min-width:56px">'+fd(s.fecha)+'</span><span class="chip '+(s.estado==='validada'?'g':'')+'">'+s.estado+'</span><span class="small" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.foco||'')+'</span></div>').join(''):'<span class="empty">Sin sesiones.</span>')+'</div>'+
+  '<details class="card"><summary>Historial de hipótesis ('+hh.length+')</summary>'+(hh.length?hh.map(x=>'<div class="mini" style="margin-top:8px"><b>'+fd(x.fecha)+' · '+esc(x.origen)+'</b><p>'+nl(x.texto)+'</p></div>').join(''):'<p class="empty">Aún no hay cambios registrados. Se llena solo cuando validas una sesión con una nueva hipótesis activa.</p>')+'</details>'+
   '<details class="card"><summary>Datos del consultante</summary>'+
   '<label class="f"><span>Iniciales</span><em class="hint">Recuerda usar solo iniciales, nunca el nombre completo.</em><input data-cf="ini" value="'+esc(c.ini)+'"></label>'+
   '<label class="f"><span>Motivo de consulta</span><textarea data-cf="motivo" rows="2">'+esc(c.motivo)+'</textarea></label>'+
@@ -575,42 +590,24 @@ function vSesion(){
   fld(s,'yo','Cómo me sentí yo',3,'¿En qué momento sentí más tensión y qué hice con eso? · ¿Hubo prisa por intervenir o “hacer algo”? · ¿Qué evité nombrar?')+
   fld(s,'consultante','Cómo sentí al consultante',3)+fld(s,'tarea','Tarea para el consultante',2)+fld(s,'proximo','Próximo paso (mío)',2)+
   (s.estado==='preparada'?'<div class="row"><button class="btn ok" data-a="realizada">Marcar sesión como realizada</button></div>':'')+'</div>'+
+  '<div class="card"><h3>Supervisión / lectura externa</h3><em class="hint">Notas de orientación que te haya dado tu supervisor(a), u otra lectura externa sobre este caso (por ejemplo, de una IA que uses fuera de aquí). Opcional.</em>'+
+  fld(s,'supervision','Notas de supervisión',4)+'</div>'+
   '<div class="card"><h3>Borrador y validación</h3>'+
-  (lock?'<div class="banner info">✔ Validada el '+new Date(s.validadaEn||Date.now()).toLocaleDateString('es-MX',{day:'numeric',month:'long'})+'. Esta es tu versión final.</div><div class="mini"><p>'+nl(s.final)+'</p></div><div class="row"><button class="btn ghost" data-a="reabrir">Reabrir para editar</button></div>':
+  (lock?'<div class="banner info">✔ Validada el '+new Date(s.validadaEn||Date.now()).toLocaleDateString('es-MX',{day:'numeric',month:'long'})+'. Esta es tu versión final.</div><div class="mini"><div class="rich">'+richView(s.final)+'</div></div><div class="row"><button class="btn ghost" data-a="reabrir">Reabrir para editar</button></div>':
   '<div class="row"><select data-f="borradorFormato" style="max-width:260px"><option value="narrativo" '+(s.borradorFormato==='narrativo'?'selected':'')+'>Narrativo-sistémico</option><option value="soap" '+(s.borradorFormato==='soap'?'selected':'')+'>SOAP</option></select><button class="btn" data-a="borrador-ia" id="b-ia">'+(S.cfg.modo==='api'?'Ordenar con IA':'Ordenar con Claude (copiar/pegar)')+'</button><button class="btn ghost" data-a="borrador-local">Armar sin IA</button></div>'+
   '<em class="hint">'+(S.cfg.modo==='api'?'La IA solo reorganiza tus palabras; no agrega hipótesis. Tus notas originales, el borrador y la versión final se guardan por separado.':'Se abre una ventana con el texto para pegar en tu Claude.ai; pega su respuesta de vuelta ahí mismo. Solo reordena tus palabras, no agrega hipótesis.')+'</em>'+
-  '<textarea data-f="borrador" rows="14" placeholder="Aquí aparece el borrador. Edítalo con tu voz.">'+esc(s.borrador)+'</textarea>'+
+  '<div class="rtbar">'+
+    '<button type="button" class="btn ghost rt-btn" data-rt="bold" title="Negritas"><b>N</b></button>'+
+    '<button type="button" class="btn ghost rt-btn" data-rt="italic" title="Cursiva"><i>I</i></button>'+
+    '<button type="button" class="btn ghost rt-btn" data-rt="insertUnorderedList" title="Lista con viñetas">• Lista</button>'+
+    '<input type="color" class="rt-color" data-rtcolor="1" value="#2b2b2b" title="Color de texto">'+
+    '<button type="button" class="btn ghost rt-btn" data-rt="font-dec" title="Letra más chica">A−</button>'+
+    '<button type="button" class="btn ghost rt-btn" data-rt="font-inc" title="Letra más grande">A+</button>'+
+    '<button type="button" class="btn ghost rt-btn" data-rt="clear" title="Quitar formato del texto seleccionado">Limpiar formato</button>'+
+  '</div>'+
+  '<em class="hint">Para color o tamaño de letra: selecciona el texto y luego toca el botón.</em>'+
+  '<div class="rtbox" id="rt-borrador" data-fh="borrador" contenteditable="true" data-ph="Aquí aparece el borrador. Edítalo con tu voz.">'+richView(s.borrador)+'</div>'+
   '<div class="row"><button class="btn ok" data-a="validar">✋ Validar y dejar como final</button></div>')+'</div>';
-}
-function clinFor(cid){
-  if(ui.clin.cid!==cid)ui.clin={cid,mia:'',lect:null,elegida:null,mia2:'',inter:'',opc:null,foco:'',busy:''};
-  return ui.clin;
-}
-function renderClinico(c){
-  const K=clinFor(c.id);
-  const busy=K.busy;
-  let h='<div class="small" style="margin:10px 0">Tu espacio de reflexión para este consultante: lo abres cuando lo necesitas. La IA propone; tú decides qué entra.</div>';
-  h+='<div class="card"><div class="small">Hipótesis activa hoy</div><div>'+(c.hipActiva?nl(c.hipActiva):'<span class="empty">—</span>')+'</div>'+(staleHip(c)?'<div class="banner" style="margin-top:8px">Lleva 4 sesiones igual. ¿Se sostiene?</div>':'')+'</div>';
-  h+='<section class="card step"><h3><span class="num">1</span>Mi lectura primero</h3><em class="hint">Antes de pedir ayuda: ¿qué crees que está sosteniendo el problema?</em><textarea data-c="mia" rows="4">'+esc(K.mia)+'</textarea><div class="row"><button class="btn" id="b-lect" data-a="c-lect" '+((K.mia.trim().length<15||busy)?'disabled':'')+'>'+(busy==='lect'?'Pensando…':'Pedir líneas de lectura')+'</button></div></section>';
-  h+='<section class="card step"><h3><span class="num">2</span>Líneas de lectura <span class="ai">sugerencia IA · no se guarda</span></h3>';
-  if(K.lect){
-    h+=K.lect.lecturas.map((l,i)=>'<div class="lect"><span class="chip on">'+esc(l.marco||'Lectura '+(i+1))+'</span><p><b>Concepto:</b> '+esc(l.concepto)+'</p><p><b>En este caso:</b> '+esc(l.aplicacion)+'</p><p><b>Implicación clínica:</b> '+esc(l.implicacion)+'</p><p><b>Para ti:</b> <i>'+esc(l.pregunta)+'</i></p><button class="btn ghost" data-a="c-elegir" data-i="'+i+'">Partir de esta lectura</button></div>').join('');
-    if((K.lect.vacios||[]).length)h+='<div class="mini"><b>Vacíos de información</b><ul class="tight">'+K.lect.vacios.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>';
-    if((K.lect.riesgos||[]).length)h+='<div class="mini" style="margin-top:8px"><b>Riesgos a observar</b><ul class="tight">'+K.lect.riesgos.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>';
-  }else h+='<div class="empty">Aparecerán aquí 2–3 lecturas para comparar con la tuya.</div>';
-  h+='</section>';
-  h+='<section class="card step"><h3><span class="num">3</span>Mi hipótesis de trabajo, con mis palabras</h3>'+(K.elegida!=null&&K.lect?'<div class="mini" style="margin-bottom:8px"><b>Lectura de partida ('+esc(K.lect.lecturas[K.elegida].marco||'')+')</b><p>'+esc(K.lect.lecturas[K.elegida].aplicacion)+'</p></div>':'')+'<em class="hint">Reescríbela tú. Solo lo que escribas aquí puede pasar a tu hipótesis activa.</em><textarea data-c="mia2" rows="4">'+esc(K.mia2)+'</textarea><div class="row"><button class="btn ok" id="b-adop" data-a="c-adoptar" '+(K.mia2.trim().length<20?'disabled':'')+'>Adoptar como hipótesis activa</button></div></section>';
-  h+='<section class="card step"><h3><span class="num">4</span>Si tuvieras que intervenir en los próximos 5 minutos…</h3><em class="hint">¿Qué harías con lo que ya tienes? Escríbelo antes de ver opciones.</em><textarea data-c="inter" rows="3">'+esc(K.inter)+'</textarea><div class="row"><button class="btn" id="b-inter" data-a="c-inter" '+((K.inter.trim().length<15||K.mia2.trim().length<20&&K.mia.trim().length<15||busy)?'disabled':'')+'>'+(busy==='inter'?'Pensando…':'Comparar con otras opciones')+'</button></div>';
-  if(K.opc){
-    h+='<div class="mini"><b>Tu propuesta, leída</b><p><span class="chip on">'+esc(K.opc.sobre_tu_propuesta&&K.opc.sobre_tu_propuesta.tipo||'')+'</span> '+esc(K.opc.sobre_tu_propuesta&&K.opc.sobre_tu_propuesta.lectura||'')+'</p></div>'+
-    (K.opc.opciones||[]).map(o=>'<div class="lect"><span class="chip on">'+esc(o.tipo)+'</span> <span class="ai">sugerencia IA</span><p><b>Intervención:</b> '+esc(o.intervencion)+'</p><p><b>Intención:</b> '+esc(o.intencion)+'</p><p><b>Ejemplo:</b> <i>'+esc(o.ejemplo)+'</i></p><p><b>Observar después:</b> '+esc(o.riesgo)+'</p></div>').join('')+
-    (K.opc.sostener?'<div class="mini"><b>Si se cierra después</b><p>'+esc(K.opc.sostener)+'</p></div>':'');
-  }
-  h+='</section>';
-  h+='<section class="card step"><h3><span class="num">5</span>Decisión clínica</h3><em class="hint">Foco de la próxima sesión, tipo de intervención y riesgo a observar. En tus palabras.</em><textarea data-c="foco" rows="3">'+esc(K.foco)+'</textarea><div class="row"><button class="btn" id="b-prox" data-a="c-prox" '+(K.foco.trim().length<10?'disabled':'')+'>Llevar a la próxima sesión</button></div></section>';
-  const hh=(c.hipHist||[]).slice().reverse();
-  h+='<details class="card"><summary>Historial de hipótesis ('+hh.length+')</summary>'+(hh.length?hh.map(x=>'<div class="mini" style="margin-top:8px"><b>'+fd(x.fecha)+' · '+esc(x.origen)+'</b><p>'+nl(x.texto)+'</p></div>').join(''):'<p class="empty">Aún no hay cambios registrados desde aquí.</p>')+'</details>';
-  return h;
 }
 function vAjustes(){
   const hasKey=!!localStorage.getItem(CK);
@@ -676,10 +673,6 @@ async function importar(file){
   if(!ok)return;
   obj.cfg=Object.assign({},S.cfg,obj.cfg||{});obj.meta=obj.meta||{};S=obj;save();go('tablero');toast('Datos importados.');
 }
-function contexto(c){
-  const ss=sesDe(c.id).filter(s=>s.estado!=='preparada').slice(-5);
-  return ['Consultante: '+c.ini,'Motivo de consulta: '+(c.motivo||'—'),'Hipótesis inicial: '+(c.hipInicial||'—'),'Hipótesis activa: '+(c.hipActiva||'—')].concat(ss.map(s=>'— Sesión '+s.num+' ('+s.fecha+')\nFoco: '+(s.foco||'')+'\nMovimientos clave: '+(s.movimientos||'')+'\nIntervenciones: '+(s.intervenciones||'')+'\nInsight: '+(s.insight||'')+'\nCierre: '+(s.cierre||'')+'\nLa terapeuta sintió: '+(s.yo||'')+'\nPercepción del consultante: '+(s.consultante||'')+'\nMarcadores: '+(s.marcadores||[]).map(k=>k.tipo+': '+k.texto).join(' | '))).join('\n');
-}
 function hipSync(c,texto,origen){c.hipActiva=texto;c.hipHist=c.hipHist||[];c.hipHist.push({fecha:iso(today()),texto,origen});}
 
 const A={
@@ -705,7 +698,7 @@ const A={
   },
   'nueva-s'(){
     const c=cons(ui.cid),ss=sesDe(c.id),num=ss.reduce((m,x)=>Math.max(m,x.num),0)+1;
-    const s={id:uid(),cid:c.id,num,fecha:iso(today()),estado:'preparada',modalidad:(c.modalidad==='mixta'?'':c.modalidad||''),hipActiva:c.hipActiva||'',foco:(c.paraProxima&&c.paraProxima.foco)||'',intencion:'',marcadores:[],notas:'',insight:'',movimientos:'',movimientoProceso:'',intervenciones:'',cierre:'',yo:'',consultante:'',tarea:'',proximo:'',borrador:'',borradorIA:'',final:'',borradorFormato:S.cfg.formato||'narrativo'};
+    const s={id:uid(),cid:c.id,num,fecha:iso(today()),estado:'preparada',modalidad:(c.modalidad==='mixta'?'':c.modalidad||''),hipActiva:c.hipActiva||'',foco:(c.paraProxima&&c.paraProxima.foco)||'',intencion:'',marcadores:[],notas:'',insight:'',movimientos:'',movimientoProceso:'',intervenciones:'',cierre:'',yo:'',consultante:'',tarea:'',proximo:'',supervision:'',borrador:'',borradorIA:'',final:'',borradorFormato:S.cfg.formato||'narrativo'};
     S.sesiones.push(s);save();ui.sid=s.id;go('sesion');
   },
   realizada(){const s=ses(ui.sid);s.estado='realizada';save();rerender();toast('Sesión marcada como realizada.');},
@@ -740,33 +733,6 @@ const A={
     save();rerender();toast('Nota validada ✔');
   },
   reabrir(){const s=ses(ui.sid);s.estado='borrador';s.validadaEn=null;save();rerender();},
-  async 'c-lect'(){
-    const K=ui.clin,c=cons(K.cid),m=makeMasker(c);
-    const user=m.fwd(contexto(c)+'\n\nMI HIPÓTESIS (terapeuta): '+K.mia);
-    K.busy='lect';rerender();
-    try{
-      const out=await sendAI(SYS_LECT,user,2200);
-      if(out){const j=deep(parseJSON(out),m.back);if(!Array.isArray(j.lecturas))throw new Error('formato inesperado');K.lect=j;K.elegida=null;}
-    }catch(e){errorModal('No pude obtener lecturas',e.message);}
-    K.busy='';rerender();
-  },
-  'c-elegir'(b){ui.clin.elegida=+b.dataset.i;rerender();toast('Ahora reescríbela con tus palabras en el paso 3.');},
-  async 'c-adoptar'(){
-    const K=ui.clin,c=cons(K.cid);
-    const ok=await modal({title:'Adoptar hipótesis',body:'<p>Pasará a ser la hipótesis activa de <b>'+esc(c.ini)+'</b>:</p><div class="mini"><p>'+nl(K.mia2)+'</p></div>',ok:'Adoptar'});if(!ok)return;
-    hipSync(c,K.mia2.trim(),K.elegida!=null?'lectura sugerida, reescrita por mí':'propia');save();rerender();toast('Hipótesis activa actualizada.');
-  },
-  async 'c-inter'(){
-    const K=ui.clin,c=cons(K.cid),m=makeMasker(c);
-    const user=m.fwd(contexto(c)+'\n\nMI HIPÓTESIS DE TRABAJO: '+(K.mia2.trim()||K.mia)+'\n\nLA INTERVENCIÓN QUE YO HARÍA EN LOS PRÓXIMOS 5 MINUTOS: '+K.inter);
-    K.busy='inter';rerender();
-    try{
-      const out=await sendAI(SYS_INTER,user,1800);
-      if(out){const j=deep(parseJSON(out),m.back);if(!Array.isArray(j.opciones))throw new Error('formato inesperado');K.opc=j;}
-    }catch(e){errorModal('No pude obtener opciones',e.message);}
-    K.busy='';rerender();
-  },
-  'c-prox'(){const K=ui.clin,c=cons(K.cid);c.paraProxima={foco:K.foco.trim(),intervencion:K.inter.trim(),fecha:iso(today())};save();toast('Guardado en la ficha de '+c.ini+'.');},
   async 'save-key'(){
     const k=$('#k-key').value.trim(),p=$('#k-pass').value;
     if(!k||p.length<8){toast('Escribe la llave y una contraseña de mínimo 8 caracteres.');return;}
@@ -797,11 +763,60 @@ const A={
     await gcalFetchEventos();
   }
 };
+/* ===== barra de formato (borrador) ===== */
+let rtSavedRange=null;
+function rtFontPx(node){while(node&&node.nodeType!==1)node=node.parentNode;if(!node||!node.nodeType)return 16;try{return parseFloat(window.getComputedStyle(node).fontSize)||16;}catch(e){return 16;}}
+function rtChangeFontSize(box,dir){
+  const sel=window.getSelection();
+  if(!sel||!sel.rangeCount||!box.contains(sel.anchorNode)||sel.getRangeAt(0).collapsed){toast('Selecciona el texto que quieres agrandar o achicar.');return;}
+  const cur=rtFontPx(sel.anchorNode);
+  const next=Math.max(10,Math.min(40,Math.round(cur*(dir>0?1.2:1/1.2))));
+  document.execCommand('fontSize',false,'7');
+  box.querySelectorAll('font[size="7"]').forEach(f=>{
+    const span=document.createElement('span');
+    span.style.fontSize=next+'px';
+    span.innerHTML=f.innerHTML;
+    f.replaceWith(span);
+  });
+}
+document.addEventListener('mousedown',e=>{
+  const rtb=e.target.closest('[data-rt]');
+  if(rtb)e.preventDefault();
+  if(e.target.closest('[data-rtcolor]')){
+    const box=document.getElementById('rt-borrador');
+    const sel=window.getSelection();
+    if(box&&sel&&sel.rangeCount&&box.contains(sel.anchorNode))rtSavedRange=sel.getRangeAt(0).cloneRange();
+  }
+});
+document.addEventListener('click',e=>{
+  const rtb=e.target.closest('[data-rt]');
+  if(!rtb)return;
+  e.preventDefault();
+  const box=document.getElementById('rt-borrador');
+  if(!box)return;
+  box.focus();
+  const cmd=rtb.dataset.rt;
+  if(cmd==='font-inc')rtChangeFontSize(box,1);
+  else if(cmd==='font-dec')rtChangeFontSize(box,-1);
+  else if(cmd==='clear')document.execCommand('removeFormat',false,null);
+  else document.execCommand(cmd,false,null);
+  box.dispatchEvent(new Event('input',{bubbles:true}));
+});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const f=A[b.dataset.a];if(f){e.preventDefault();f(b);}});
 document.addEventListener('input',e=>{
   const t=e.target;
   if(t.dataset.f){const s=ses(ui.sid);if(!s)return;let v=t.value;if(t.dataset.f==='num')v=Number(v)||0;s[t.dataset.f]=v;if(t.dataset.f==='borrador'&&v.trim()&&(s.estado==='preparada'||s.estado==='realizada'))s.estado='borrador';saveSoon();}
-  else if(t.dataset.c){ui.clin[t.dataset.c]=t.value;const K=ui.clin,d=(id,f)=>{const el=document.getElementById(id);if(el)el.disabled=f;};d('b-lect',K.mia.trim().length<15||!!K.busy);d('b-adop',K.mia2.trim().length<20);d('b-inter',K.inter.trim().length<15||(K.mia2.trim().length<20&&K.mia.trim().length<15)||!!K.busy);d('b-prox',K.foco.trim().length<10);}
+  else if(t.dataset.fh){const s=ses(ui.sid);if(!s)return;const v=t.innerHTML;s[t.dataset.fh]=v;if(t.dataset.fh==='borrador'&&t.textContent.trim()&&(s.estado==='preparada'||s.estado==='realizada'))s.estado='borrador';saveSoon();}
+  else if(t.dataset.rtcolor){
+    const box=document.getElementById('rt-borrador');
+    if(box){
+      box.focus();
+      if(rtSavedRange){try{const sel=window.getSelection();sel.removeAllRanges();sel.addRange(rtSavedRange);}catch(e){}}
+      document.execCommand('foreColor',false,t.value);
+      box.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+  }
+  else if(t.dataset.pp){const c=cons(ui.cid);if(!c)return;c.paraProxima=c.paraProxima||{foco:'',intervencion:'',fecha:''};c.paraProxima[t.dataset.pp]=t.value;c.paraProxima.fecha=iso(today());saveSoon();}
   else if(t.dataset.cf){const c=cons(ui.cid);if(!c)return;c[t.dataset.cf]=t.dataset.cf==='mask'?t.value.split(',').map(x=>x.trim()).filter(Boolean):t.value;saveSoon();}
   else if(t.dataset.h){const c=cons(ui.cid);if(!c)return;c.historia=c.historia||{};hset(c.historia,t.dataset.h,t.value);saveSoon();}
   else if(t.dataset.cfg){S.cfg[t.dataset.cfg]=t.type==='checkbox'?t.checked:t.value;save();if(t.dataset.cfg==='modo')rerender();}
@@ -826,7 +841,7 @@ async function arrancar(){
   if(!S||!Array.isArray(S.consultantes)){S=await pedirDatosReales();save();}
   S.cfg=Object.assign({model:'claude-sonnet-5',preview:true,formato:'narrativo',modo:'copiar'},S.cfg||{});S.meta=S.meta||{};
   S.consultantes.forEach(c=>{c.historia=c.historia||{};if(c.modalidad==null)c.modalidad='';if(c.nombreCalendario==null)c.nombreCalendario='';});
-  S.sesiones.forEach(s=>{if(s.movimientoProceso==null)s.movimientoProceso='';if(s.modalidad==null)s.modalidad='';});
+  S.sesiones.forEach(s=>{if(s.movimientoProceso==null)s.movimientoProceso='';if(s.modalidad==null)s.modalidad='';if(s.supervision==null)s.supervision='';});
   render();
 }
 arrancar();
